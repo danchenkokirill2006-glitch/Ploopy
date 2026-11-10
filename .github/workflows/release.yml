@@ -24,7 +24,7 @@ jobs:
         shell: pwsh
         env:
           PLOOPY_VERSION: ${{ github.ref_name }}
-        run: ./installer/Собрать пакет.ps1
+        run: '& "./installer/Собрать пакет.ps1"'
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
