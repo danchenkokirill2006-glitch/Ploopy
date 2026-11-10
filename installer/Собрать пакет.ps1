@@ -84,7 +84,7 @@ $updateShortcut = Join-Path $temporary 'update-test-shortcuts\Ploopy.lnk'
     -Archive $zip -InstallDir $installTest2 -ProcessId 999999 -ShortcutPath $updateShortcut -NoRestart
 if ($LASTEXITCODE -ne 0) { throw 'Тест обновления установленного приложения завершился с ошибкой.' }
 if (-not (Get-Content -Raw -LiteralPath (Join-Path $installTest2 'settings.json')).Contains('Alt + Q')) { throw 'Обновление перезаписало пользовательские настройки.' }
-if ((Get-Content -Raw -LiteralPath (Join-Path $installTest2 'Ploopy\version.txt')) -ne $releaseVersion) { throw 'После обновления установлен неверный номер версии.' }
+if ((Get-Content -Raw -LiteralPath (Join-Path $installTest2 'version.txt')) -ne $releaseVersion) { throw 'После обновления установлен неверный номер версии.' }
 Write-Output "Архив создан: $zip"
 Write-Output "Размер: $([math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1)) МБ"
 Write-Output "Проверки пройдены. yt-dlp $(& $ytdlp --version)"
