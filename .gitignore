@@ -1,0 +1,20 @@
+# Runtime data: these files belong to each user, not the source repository.
+/settings.json
+/history.json
+/startup.log
+/ui_customization.json
+/ui_element_edits.json
+
+# Local Python and packaging output.
+__pycache__/
+*.py[cod]
+!vendor/**/*.pyd
+*.spec
+/build/
+/dist/
+/release/
+
+# Historical and machine-specific project files.
+/app-before-native-ui-*.py
+/admin_panel.pyw
+/Установить и запустить.bat
