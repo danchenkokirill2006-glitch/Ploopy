@@ -12,18 +12,14 @@ if (-not (Test-Path -LiteralPath (Join-Path $source 'Ploopy.exe'))) {
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 # Keep settings, download history, and UI customizations from any existing install.
 $excluded = @('settings.json', 'history.json', 'ui_customization.json', 'ui_element_edits.json', 'startup.log')
-Get-ChildItem -LiteralPath $source -Force -Recurse | ForEach-Object {
-    $relative = $_.FullName.Substring($source.TrimEnd('\').Length).TrimStart('\')
-    $destination = Join-Path $InstallDir $relative
-    if (($excluded -contains $_.Name) -and (Test-Path -LiteralPath $destination)) { return }
-    if ($_.PSIsContainer) {
-        New-Item -ItemType Directory -Force -Path $destination | Out-Null
-    } else {
-        $parent = Split-Path -Parent $destination
-        New-Item -ItemType Directory -Force -Path $parent | Out-Null
-        Copy-Item -LiteralPath $_.FullName -Destination $destination -Force
-    }
+$preserve = @($excluded | Where-Object { Test-Path -LiteralPath (Join-Path $InstallDir $_) })
+$copyArgs = @($source, $InstallDir, '/E', '/COPY:DAT', '/DCOPY:DAT', '/R:2', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+if ($preserve.Count -gt 0) {
+    $copyArgs += '/XF'
+    $copyArgs += $preserve
 }
+& robocopy @copyArgs | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "Не удалось скопировать файлы приложения (код $LASTEXITCODE)." }
 $updaterSource = Join-Path $PackageRoot 'Apply-Update.ps1'
 if (Test-Path -LiteralPath $updaterSource) {
     Copy-Item -LiteralPath $updaterSource -Destination (Join-Path $InstallDir 'Apply-Update.ps1') -Force
