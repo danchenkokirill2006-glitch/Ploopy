@@ -22,4 +22,4 @@ if any((package / name).exists() for name in private):
 for name in ("Install-Ploopy.ps1", "Apply-Update.ps1"):
     if not (package.parent / name).is_file():
         raise SystemExit(f"В пакете отсутствует {name}.")
-print("Состав пакета и чистые начальные данные проверены.")
+print("Package contents and clean initial data verified.")
