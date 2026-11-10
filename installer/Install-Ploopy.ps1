@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$PackageRoot = $PSScriptRoot,
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Programs\Ploopy'),
     [string]$ShortcutPath = (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Ploopy.lnk'),
