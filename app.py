@@ -984,7 +984,7 @@ class DownloaderApp:
         window_x = max(0, (screen_width - window_width) // 2)
         window_y = max(0, (screen_height - window_height) // 2)
         self.root.geometry(f"{window_width}x{window_height}+{window_x}+{window_y}")
-        self.root.minsize(820, 860)
+        self.root.minsize(780, 520)
         try:
             self.root.iconbitmap(str(APP_DIR / "Ploopy.ico"))
         except tk.TclError:
@@ -1577,8 +1577,14 @@ class DownloaderApp:
         """Build a responsive native Tk interface without image-based window skins."""
         self.root.overrideredirect(False)
         self.root.configure(bg=APP_SURFACE)
-        self.root.minsize(780, 700)
-        self.root.geometry("1100x950")
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = min(1100, max(780, screen_width - 80))
+        window_height = min(950, max(560, screen_height - 100))
+        window_x = max(0, (screen_width - window_width) // 2)
+        window_y = max(0, (screen_height - window_height) // 2)
+        self.root.minsize(780, 520)
+        self.root.geometry(f"{window_width}x{window_height}+{window_x}+{window_y}")
 
         style = ttk.Style(self.root)
         style.theme_use("clam")
@@ -1601,8 +1607,30 @@ class DownloaderApp:
         )
         style.configure("Horizontal.TProgressbar", troughcolor=APP_SURFACE, background="#2581f6", thickness=10, borderwidth=0, relief="flat")
 
-        shell = ttk.Frame(self.root, padding=(30, 22))
-        shell.pack(fill="both", expand=True)
+        page_view = ttk.Frame(self.root)
+        page_view.pack(fill="both", expand=True)
+        page_view.grid_rowconfigure(0, weight=1)
+        page_view.grid_columnconfigure(0, weight=1)
+        self.page_canvas = tk.Canvas(
+            page_view, bg=APP_SURFACE, bd=0, highlightthickness=0,
+            yscrollincrement=36,
+        )
+        self.page_canvas.grid(row=0, column=0, sticky="nsew")
+        self.page_scrollbar = ttk.Scrollbar(
+            page_view, orient="vertical", command=self.page_canvas.yview,
+            style="Ploopy.Vertical.TScrollbar",
+        )
+        self.page_canvas.configure(yscrollcommand=self.page_scrollbar.set)
+        shell = ttk.Frame(self.page_canvas, padding=(30, 22))
+        self.page_content = shell
+        self.page_window = self.page_canvas.create_window(
+            (0, 0), window=shell, anchor="nw", tags="page_content"
+        )
+        shell.bind("<Configure>", self.schedule_page_layout, add="+")
+        self.page_canvas.bind("<Configure>", self.schedule_page_layout, add="+")
+        self._page_layout_after_id = None
+        self._page_scrollbar_visible = False
+        self.page_view = page_view
 
         header = ttk.Frame(shell)
         self.header = header
@@ -1737,8 +1765,78 @@ class DownloaderApp:
 
         self.show_tab("downloads")
         self.populate_downloaded_files()
-        self.root.bind_all("<MouseWheel>", self.scroll_downloads)
+        self.root.bind_all("<MouseWheel>", self.scroll_main_page)
+        self.root.bind_all("<Button-4>", lambda event: self.scroll_main_page(event, -1))
+        self.root.bind_all("<Button-5>", lambda event: self.scroll_main_page(event, 1))
         self.root.bind_all("<Configure>", lambda _e: None)
+        self.schedule_page_layout()
+
+    def schedule_page_layout(self, _event=None):
+        if self._page_layout_after_id is None:
+            self._page_layout_after_id = self.root.after_idle(self.layout_page)
+
+    def layout_page(self):
+        self._page_layout_after_id = None
+        if not self.root.winfo_exists():
+            return
+        canvas_width = self.page_canvas.winfo_width()
+        viewport_height = self.page_canvas.winfo_height()
+        if canvas_width < 2 or viewport_height < 2:
+            return
+        content_height = self.page_content.winfo_reqheight()
+        needs_scrollbar = content_height > viewport_height + 2
+        if needs_scrollbar != self._page_scrollbar_visible:
+            self._page_scrollbar_visible = needs_scrollbar
+            if needs_scrollbar:
+                self.page_scrollbar.grid(row=0, column=1, sticky="ns")
+            else:
+                self.page_scrollbar.grid_remove()
+                self.page_canvas.yview_moveto(0)
+            self.root.after_idle(self.schedule_page_layout)
+            return
+        canvas_width = self.page_canvas.winfo_width()
+        content_height = max(viewport_height, self.page_content.winfo_reqheight())
+        self.page_canvas.itemconfigure(
+            self.page_window, width=canvas_width, height=content_height
+        )
+        self.page_canvas.configure(
+            scrollregion=(0, 0, canvas_width, content_height)
+        )
+
+    @staticmethod
+    def _widget_is_inside(widget, parent):
+        while widget is not None:
+            if widget is parent:
+                return True
+            widget = getattr(widget, "master", None)
+        return False
+
+    def scroll_main_page(self, event, linux_direction=None):
+        if linux_direction is None:
+            delta = getattr(event, "delta", 0)
+            steps = int(-delta / 120)
+            if steps == 0 and delta:
+                steps = -1 if delta > 0 else 1
+        else:
+            steps = linux_direction
+        if not steps:
+            return
+
+        pointer = self.root.winfo_containing(event.x_root, event.y_root)
+        nested_canvas = None
+        if self.downloads_view.winfo_ismapped() and self._widget_is_inside(pointer, self.downloads_view):
+            nested_canvas = self.download_canvas
+        elif self.history_view.winfo_ismapped() and self._widget_is_inside(pointer, self.history_view):
+            nested_canvas = self.history_canvas
+        if nested_canvas is not None:
+            first, last = nested_canvas.yview()
+            can_scroll_nested = (steps < 0 and first > 0) or (steps > 0 and last < 1)
+            if can_scroll_nested:
+                nested_canvas.yview_scroll(steps, "units")
+                return "break"
+
+        self.page_canvas.yview_scroll(steps, "units")
+        return "break"
 
     def _draw_window_shell(self, event=None):
         w = self.shell_canvas.winfo_width()
@@ -2089,12 +2187,12 @@ class DownloaderApp:
         if "e" in edges:
             width = max(820, orig_w + dx)
         if "s" in edges:
-            height = max(860, orig_h + dy)
+            height = max(520, orig_h + dy)
         if "w" in edges:
             width = max(820, orig_w - dx)
             x = orig_x + orig_w - width
         if "n" in edges:
-            height = max(860, orig_h - dy)
+            height = max(520, orig_h - dy)
             y = orig_y + orig_h - height
         self._resize_pending = (x, y, width, height)
         if getattr(self, "_resize_after_id", None) is None:
