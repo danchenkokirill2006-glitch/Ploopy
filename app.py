@@ -24,6 +24,7 @@ from tkinter import filedialog, ttk, font as tkfont, simpledialog, messagebox
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageTk
 import pystray
 from version import APP_VERSION as DEFAULT_APP_VERSION, GITHUB_REPOSITORY
+from update_bootstrap import extract_update_helper
 
 DEFAULT_DIR = Path.home() / "Downloads" / "Загрузки по ссылке"
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
@@ -2936,9 +2937,7 @@ class DownloaderApp:
             expected_digest = asset.get("digest", "")
             if expected_digest != f"sha256:{digest.hexdigest()}":
                 raise ValueError("Контрольная сумма архива не совпала")
-            updater = APP_DIR / "Apply-Update.ps1"
-            if not updater.is_file():
-                raise FileNotFoundError("Не найден помощник установки обновления")
+            updater = extract_update_helper(archive)
             command = [
                 "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
                 "-File", str(updater), "-Archive", str(archive),

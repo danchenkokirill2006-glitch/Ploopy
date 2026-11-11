@@ -80,7 +80,10 @@ if (Test-Path -LiteralPath $zip) {
 }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
 $updateShortcut = Join-Path $temporary 'update-test-shortcuts\Ploopy.lnk'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $stage 'Apply-Update.ps1') `
+$bootstrapDir = Join-Path $temporary 'update-bootstrap'
+& $python -c "import sys; from update_bootstrap import extract_update_helper; print(extract_update_helper(sys.argv[1], sys.argv[2]))" $zip $bootstrapDir
+if ($LASTEXITCODE -ne 0) { throw 'Не удалось извлечь помощник обновления из архива.' }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bootstrapDir 'Apply-Update.ps1') `
     -Archive $zip -InstallDir $installTest2 -ProcessId 999999 -ShortcutPath $updateShortcut -NoRestart
 if ($LASTEXITCODE -ne 0) { throw 'Тест обновления установленного приложения завершился с ошибкой.' }
 if (-not (Get-Content -Raw -LiteralPath (Join-Path $installTest2 'settings.json')).Contains('Alt + Q')) { throw 'Обновление перезаписало пользовательские настройки.' }
