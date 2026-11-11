@@ -1759,9 +1759,19 @@ class DownloaderApp:
 
         footer = ttk.Frame(shell)
         footer.pack(side="bottom", fill="x", pady=(12, 0))
+        footer.grid_columnconfigure(0, weight=1)
         self.autostart_toggle = RoundedToggle(footer, "Запускать вместе с Windows", self.run_at_login_var, self.on_settings_change, width=330, background=APP_SURFACE, height=38)
-        self.autostart_toggle.pack(side="left")
-        FolderAction(footer, self.open_dir, background=APP_SURFACE).pack(side="right", padx=(12, 0))
+        self.autostart_toggle.grid(row=0, column=0, sticky="w")
+        FolderAction(footer, self.open_dir, background=APP_SURFACE).grid(
+            row=0, column=1, sticky="e", padx=(12, 0)
+        )
+        tk.Label(
+            footer,
+            text=f"Версия {APP_VERSION}",
+            bg=APP_SURFACE,
+            fg="#8996aa",
+            font=(APP_FONT, 9),
+        ).grid(row=1, column=0, columnspan=2, sticky="e", pady=(5, 0))
 
         self.show_tab("downloads")
         self.populate_downloaded_files()
