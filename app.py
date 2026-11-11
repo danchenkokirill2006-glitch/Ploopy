@@ -3754,6 +3754,7 @@ class DownloaderApp:
         return_code = 1
         output_lines = []
         final_browser = browsers[0]
+        missing_cookie_sources = []
         for index, browser in enumerate(browsers):
             attempt_args = list(args)
             if browser != "Без авторизации":
@@ -3773,11 +3774,14 @@ class DownloaderApp:
                 return
 
             attempt_text = "\n".join(output_lines).lower()
+            if browser != "Без авторизации" and "cookies database" in attempt_text:
+                missing_cookie_sources.append(browser)
             may_need_another_session = any(
                 marker in attempt_text
                 for marker in (
                     "could not copy",
                     "cookie database",
+                    "cookies database",
                     "sign in to confirm",
                     "not a bot",
                     "no video formats found",
@@ -3806,14 +3810,21 @@ class DownloaderApp:
                 elif final_browser == "Без авторизации":
                     explanation = (
                         "YouTube требует входа и отклонил загрузку без авторизации. "
-                        "Войди в YouTube в браузере, затем выбери этот браузер в настройке "
-                        "«Вход через браузер» и повтори загрузку."
+                        "Войди в YouTube в браузере с действующим профилем, затем выбери "
+                        "его в настройке «Вход через браузер» и повтори загрузку."
                     )
                 else:
                     explanation = (
                         f"YouTube требует подтверждения входа через {final_browser}. "
                         "Проверь, что в выбранном профиле открыт YouTube и выполнен вход. "
                         "Если Ploopy не смог прочитать cookies, полностью закрой браузер и повтори загрузку."
+                    )
+                if missing_cookie_sources:
+                    sources = ", ".join(dict.fromkeys(missing_cookie_sources))
+                    explanation += (
+                        f" Не удалось найти базу cookies браузера: {sources}. "
+                        "Проверь, что в нём создан профиль и выполнен вход; "
+                        "в настройках можно выбрать другой браузер или «Автоматически»."
                     )
             elif "cookies" in explanation.lower():
                 explanation += " Проверь, что в одном из браузеров выполнен вход; если cookies заблокированы, закрой его и повтори попытку."
