@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 $stamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
 $temporary = Join-Path $env:TEMP "Ploopy-package-$stamp"

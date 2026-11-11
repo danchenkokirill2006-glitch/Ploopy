@@ -5,9 +5,16 @@
     [switch]$NoLaunch
 )
 $ErrorActionPreference = 'Stop'
-$source = Join-Path $PackageRoot 'Ploopy'
-if (-not (Test-Path -LiteralPath (Join-Path $source 'Ploopy.exe'))) {
-    throw "Не найдена папка приложения: $source"
+$packagePath = (Resolve-Path -LiteralPath $PackageRoot -ErrorAction Stop).ProviderPath
+$source = Join-Path $packagePath 'Ploopy'
+try {
+    $appPath = Join-Path $source 'Ploopy.exe'
+    $appExists = Test-Path -LiteralPath $appPath -PathType Leaf -ErrorAction Stop
+} catch {
+    throw "Не удалось проверить файлы пакета в папке `"$packagePath`". Распакуй архив полностью в обычную папку и запусти установку ещё раз. Подробности: $($_.Exception.Message)"
+}
+if (-not $appExists) {
+    throw "Не найден файл приложения: `"$appPath`". Убедись, что архив распакован полностью и рядом с установщиком есть папка Ploopy."
 }
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 # Keep settings, download history, and UI customizations from any existing install.
@@ -20,7 +27,7 @@ if ($preserve.Count -gt 0) {
 }
 & robocopy @copyArgs | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "Не удалось скопировать файлы приложения (код $LASTEXITCODE)." }
-$updaterSource = Join-Path $PackageRoot 'Apply-Update.ps1'
+$updaterSource = Join-Path $packagePath 'Apply-Update.ps1'
 if (Test-Path -LiteralPath $updaterSource) {
     Copy-Item -LiteralPath $updaterSource -Destination (Join-Path $InstallDir 'Apply-Update.ps1') -Force
 }
