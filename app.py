@@ -508,7 +508,14 @@ class RoundedButton(tk.Canvas):
         background=PANEL_SURFACE,
     ):
         super().__init__(
-            master, width=width, height=height, bg=background, bd=0, highlightthickness=0
+            master,
+            width=width,
+            height=height,
+            bg=background,
+            bd=0,
+            highlightthickness=2,
+            highlightbackground=background,
+            highlightcolor="#2678e5",
         )
         self.text, self.command = text, command
         self.width, self.height = width, height
@@ -521,9 +528,14 @@ class RoundedButton(tk.Canvas):
         self.bind("<Configure>", lambda _event: self.draw())
         self.bind("<Enter>", self.on_enter)
         self.bind("<Leave>", self.on_leave)
-        self.bind("<Button-1>", lambda _event: self.command())
+        self.bind("<Button-1>", self.focus_from_mouse, add="+")
+        self.bind("<Button-1>", lambda _event: self.command(), add="+")
         self.bind("<Return>", lambda _event: self.command())
+        self.bind("<space>", lambda _event: self.command())
         self.configure(cursor="hand2", takefocus=True)
+
+    def focus_from_mouse(self, _event=None):
+        self.focus_set()
 
     def draw(self):
         w, h = max(12, self.winfo_width()), max(12, self.winfo_height())
@@ -576,8 +588,11 @@ class RoundedTab(tk.Canvas):
             height=66,
             bg=APP_SURFACE,
             bd=0,
-            highlightthickness=0,
+            highlightthickness=2,
+            highlightbackground=APP_SURFACE,
+            highlightcolor="#2678e5",
             cursor="hand2",
+            takefocus=True,
         )
         self.text, self.icon, self.command = text, icon, command
         self.icon_name = {"↓": "download", "◷": "clock-3", "⚙": "settings"}.get(icon, "circle")
@@ -585,10 +600,36 @@ class RoundedTab(tk.Canvas):
         self.hover = False
         self._bg_photo = None
         self.bind("<Configure>", lambda _event: self.draw())
-        self.bind("<Button-1>", lambda _event: self.command())
+        self.bind("<Button-1>", self.focus_from_mouse, add="+")
+        self.bind("<Button-1>", lambda _event: self.command(), add="+")
+        self.bind("<Return>", lambda _event: self.activate())
+        self.bind("<space>", lambda _event: self.activate())
+        self.bind("<Left>", lambda _event: self.focus_neighbor(-1))
+        self.bind("<Right>", lambda _event: self.focus_neighbor(1))
         self.bind("<Enter>", self.on_enter)
         self.bind("<Leave>", self.on_leave)
         self.draw()
+
+    def activate(self):
+        self.command()
+        return "break"
+
+    def focus_from_mouse(self, _event=None):
+        self.focus_set()
+
+    def focus_neighbor(self, direction):
+        tabs = [
+            widget
+            for widget in self.master.winfo_children()
+            if isinstance(widget, RoundedTab)
+        ]
+        if not tabs:
+            return "break"
+        current = tabs.index(self)
+        target = tabs[(current + direction) % len(tabs)]
+        target.focus_set()
+        target.command()
+        return "break"
 
     def set_selected(self, selected):
         self.selected = selected
@@ -656,7 +697,9 @@ class RoundedSelect(tk.Canvas):
             height=height,
             bg=PANEL_SURFACE,
             bd=0,
-            highlightthickness=0,
+            highlightthickness=2,
+            highlightbackground=PANEL_SURFACE,
+            highlightcolor="#2678e5",
             cursor="hand2",
             takefocus=True,
         )
@@ -664,8 +707,11 @@ class RoundedSelect(tk.Canvas):
         self.width, self.height = width, height
         self._bg_photo = None
         self.bind("<Configure>", lambda _event: self.draw())
-        self.bind("<Button-1>", self.open_menu)
+        self.bind("<Button-1>", lambda _event: self.focus_set())
+        self.bind("<Button-1>", self.open_menu, add="+")
         self.bind("<Return>", self.open_menu)
+        self.bind("<space>", self.open_menu)
+        self.bind("<Down>", self.open_menu)
         self.menu = tk.Menu(
             self,
             tearoff=0,
@@ -713,10 +759,13 @@ class RoundedToggle(tk.Frame):
             master,
             bg=background,
             bd=0,
-            highlightthickness=0,
             width=width,
             height=height,
             cursor="hand2",
+            takefocus=True,
+            highlightthickness=2,
+            highlightbackground=background,
+            highlightcolor="#2678e5",
         )
         self.pack_propagate(False)
         self.variable, self.command = variable, command
@@ -736,8 +785,11 @@ class RoundedToggle(tk.Frame):
         )
         self.label.pack(side="left", fill="x", expand=True)
         for widget in (self, self.switch, self.label):
-            widget.bind("<Button-1>", self.toggle)
+            widget.bind("<Button-1>", self.focus_from_mouse)
+            widget.bind("<Button-1>", self.toggle, add="+")
             widget.configure(cursor="hand2")
+        self.bind("<Return>", self.toggle)
+        self.bind("<space>", self.toggle)
         self.variable.trace_add("write", lambda *_: self.draw())
         self.draw()
 
@@ -763,6 +815,9 @@ class RoundedToggle(tk.Frame):
     def toggle(self, _event=None):
         self.variable.set(not self.variable.get())
         self.command()
+
+    def focus_from_mouse(self, _event=None):
+        self.focus_set()
 
 
 class RoundedProgress(tk.Canvas):
@@ -847,15 +902,18 @@ class PloopyScrollbar(tk.Canvas):
 class CircleActionButton(tk.Canvas):
     """Smooth circular icon button for pause / cancel / status in download rows."""
 
-    def __init__(self, master, icon_name, command=None, fill="#eef3fb", hover="#e1ebf9", fg="#475670", size=36):
+    def __init__(self, master, icon_name, command=None, fill="#eef3fb", hover="#e1ebf9", fg="#475670", size=36, label=None):
         super().__init__(
             master,
             width=size,
             height=size,
             bg=PANEL_SURFACE,
             bd=0,
-            highlightthickness=0,
+            highlightthickness=2 if command else 0,
+            highlightbackground=PANEL_SURFACE,
+            highlightcolor="#2678e5",
             cursor="hand2" if command else "arrow",
+            takefocus=bool(command),
         )
         self.icon_name = icon_name
         self.command = command
@@ -863,6 +921,7 @@ class CircleActionButton(tk.Canvas):
         self.hover_fill = hover
         self.fg = fg
         self.size = size
+        self.accessible_name = label or icon_name
         self.hover = False
         self._bg_photo = None
         self._icon_photo = None
@@ -870,8 +929,16 @@ class CircleActionButton(tk.Canvas):
         if command:
             self.bind("<Enter>", self.on_enter)
             self.bind("<Leave>", self.on_leave)
-            self.bind("<Button-1>", lambda _e: self.command())
+            self.bind("<Button-1>", lambda _e: self.focus_set(), add="+")
+            self.bind("<Button-1>", lambda _e: self.activate(), add="+")
+            self.bind("<Return>", lambda _e: self.activate())
+            self.bind("<space>", lambda _e: self.activate())
         self.draw()
+
+    def activate(self):
+        if self.command:
+            self.command()
+        return "break"
 
     def set_icon(self, icon_name: str):
         self.icon_name = icon_name
@@ -907,7 +974,9 @@ class WindowControl(tk.Canvas):
             height=38,
             bg=background,
             bd=0,
-            highlightthickness=0,
+            highlightthickness=2,
+            highlightbackground=background,
+            highlightcolor="#2678e5",
             cursor="hand2",
             takefocus=True,
         )
@@ -917,8 +986,10 @@ class WindowControl(tk.Canvas):
         self.bind("<Configure>", lambda _event: self.draw())
         self.bind("<Enter>", self.on_enter)
         self.bind("<Leave>", self.on_leave)
-        self.bind("<Button-1>", lambda _event: self.command())
+        self.bind("<Button-1>", lambda _event: self.focus_set(), add="+")
+        self.bind("<Button-1>", lambda _event: self.command(), add="+")
         self.bind("<Return>", lambda _event: self.command())
+        self.bind("<space>", lambda _event: self.command())
         self.draw()
 
     def draw(self):
@@ -949,7 +1020,17 @@ class FolderAction(tk.Frame):
     """Folder action with clean SVG glyphs."""
 
     def __init__(self, master, command, background=APP_SURFACE):
-        super().__init__(master, bg=background, bd=0, highlightthickness=0, cursor="hand2")
+        super().__init__(
+            master,
+            bg=background,
+            bd=0,
+            highlightthickness=2,
+            highlightbackground=background,
+            highlightcolor="#2678e5",
+            cursor="hand2",
+            takefocus=True,
+        )
+        self.command = command
         self.background = background
         color = "#5c6d87"
         self.icon_photo = svg_icon_photo(self, "folder-open", 19, color)
@@ -970,7 +1051,14 @@ class FolderAction(tk.Frame):
         )
         self.external.pack(side="left", padx=(8, 0))
         for widget in (self, self.icon, self.label, self.external):
-            widget.bind("<Button-1>", lambda _event: command())
+            widget.bind("<Button-1>", lambda _event: self.focus_set())
+            widget.bind("<Button-1>", lambda _event: self.activate(), add="+")
+        self.bind("<Return>", lambda _event: self.activate())
+        self.bind("<space>", lambda _event: self.activate())
+
+    def activate(self):
+        self.command()
+        return "break"
 
 
 class DownloaderApp:
@@ -1036,6 +1124,9 @@ class DownloaderApp:
         self.overlay_next_frame_at = 0.0
         self.overlay_percent = None
         self.overlay_done = False
+        self.overlay_title = "Идёт скачивание"
+        self.overlay_detail = ""
+        self.overlay_fonts = {}
         self.overlay_after_id = None
         self.overlay_hide_after_id = None
         self.overlay_redraw_after_id = None
@@ -1713,9 +1804,22 @@ class DownloaderApp:
             ("720p — быстрее", "1080p — чётче", "Максимум"),
             width=190,
         ).pack(side="left")
-        self.status_label = ttk.Label(shell, textvariable=self.status_detail, style="Muted.TLabel")
-        # Status and progress appear through the download rows and compact
-        # tray overlay; keep the large idle progress trough out of the layout.
+        self.status_label = tk.Label(
+            shell,
+            textvariable=self.status_detail,
+            bg=APP_SURFACE,
+            fg="#53617b",
+            font=(APP_FONT, 10),
+            justify="left",
+            anchor="w",
+            wraplength=800,
+        )
+        self.status_label.pack(fill="x", padx=8, pady=(0, 12))
+        self.status_label.bind(
+            "<Configure>",
+            lambda event: self.status_label.configure(wraplength=max(240, event.width - 8)),
+        )
+        self.status_detail.trace_add("write", self.refresh_status_style)
         self.active_progress = ttk.Progressbar(shell, mode="determinate", variable=self.progress_value, maximum=100)
 
         tab_row = ttk.Frame(shell)
@@ -1770,8 +1874,8 @@ class DownloaderApp:
             footer,
             text=f"Версия {APP_VERSION}",
             bg=APP_SURFACE,
-            fg="#8996aa",
-            font=(APP_FONT, 9),
+            fg="#53617b",
+            font=(APP_FONT, 10),
         ).grid(row=1, column=0, columnspan=2, sticky="e", pady=(5, 0))
 
         self.show_tab("downloads")
@@ -2278,6 +2382,21 @@ class DownloaderApp:
             self.url_entry.delete(0, "end")
             self.url_entry.configure(foreground="#182238")
 
+    def refresh_status_style(self, *_args):
+        if not hasattr(self, "status_label") or not self.status_label.winfo_exists():
+            return
+        message = self.status_detail.get().lower()
+        if any(
+            term in message
+            for term in ("ошибка", "не удалось", "не найден", "не найдена", "error", "failed")
+        ):
+            color = "#b44352"
+        elif "приостанов" in message:
+            color = "#966819"
+        else:
+            color = "#53617b"
+        self.status_label.configure(fg=color)
+
     def build_settings_view(self):
         body = self.settings_view.body
         tk.Label(
@@ -2293,7 +2412,7 @@ class DownloaderApp:
         browser_row.pack(fill="x", pady=(0, 8))
         tk.Label(
             browser_row,
-            text="Вход через браузер",
+            text="Браузер с аккаунтом",
             bg=PANEL_SURFACE,
             fg="#5f6f89",
             font=(APP_FONT, 12),
@@ -2304,6 +2423,18 @@ class DownloaderApp:
             ("Автоматически", "Без авторизации", "Chrome", "Edge", "Firefox", "Brave", "Opera"),
             width=175,
         ).pack(side="left")
+        tk.Label(
+            body,
+            text=(
+                "«Автоматически» проверит Chrome, Edge, Firefox, Brave и Opera, затем попробует без входа."
+            ),
+            bg=PANEL_SURFACE,
+            fg="#53617b",
+            font=(APP_FONT, 10),
+            justify="left",
+            anchor="w",
+            wraplength=640,
+        ).pack(fill="x", anchor="w", pady=(0, 8))
         hotkey_row = tk.Frame(body, bg=PANEL_SURFACE)
         hotkey_row.pack(fill="x", pady=(0, 7))
         tk.Label(
@@ -2412,6 +2543,7 @@ class DownloaderApp:
             hover="#dfe9f8",
             fg="#3b4a66",
             size=36,
+            label="Приостановить загрузку",
         )
         pause_btn.pack(side="left", padx=4)
 
@@ -2423,6 +2555,7 @@ class DownloaderApp:
             hover="#ffe6ea",
             fg="#3b4a66",
             size=36,
+            label="Отменить загрузку",
         )
         cancel_btn.pack(side="left", padx=4)
 
@@ -2447,6 +2580,32 @@ class DownloaderApp:
             size=34,
         )
         failure_badge.pack_forget()
+
+        retry_btn = CircleActionButton(
+            controls,
+            "download",
+            command=lambda u=url: self.retry_download(u),
+            fill="#e8f1ff",
+            hover="#d8e8ff",
+            fg="#2878d7",
+            size=34,
+            label="Повторить загрузку",
+        )
+        retry_btn.pack_forget()
+
+        error_details_btn = CircleActionButton(
+            controls,
+            "circle-x",
+            command=lambda u=url: self.show_download_error(u),
+            fill="#ffe4e8",
+            hover="#ffd6dc",
+            fg="#d85a6a",
+            size=34,
+            label="Показать причину ошибки",
+        )
+        error_details_btn.pack_forget()
+        for action in (pause_btn, cancel_btn, retry_btn, error_details_btn):
+            self.bind_action_hint(action)
 
         # Center content: top line = filename, bottom line = detail + progress bar + percentage
         center = tk.Frame(frame, bg=PANEL_SURFACE)
@@ -2521,6 +2680,9 @@ class DownloaderApp:
             "cancel": cancel_btn,
             "success": success_badge,
             "failure": failure_badge,
+            "retry": retry_btn,
+            "error_details": error_details_btn,
+            "full_error": "",
             "divider": divider,
         }
         if getattr(self, "visual_edit_mode", False):
@@ -2546,6 +2708,16 @@ class DownloaderApp:
         )
         label.pack()
         self._file_tooltip.geometry(f"+{event.x_root + 12}+{event.y_root + 18}")
+
+    def bind_action_hint(self, widget):
+        widget.bind(
+            "<Enter>",
+            lambda event, action=widget: self.show_file_tooltip(
+                event, action.accessible_name
+            ),
+            add="+",
+        )
+        widget.bind("<Leave>", lambda _event: self.hide_file_tooltip(), add="+")
 
     def hide_file_tooltip(self):
         tooltip = getattr(self, "_file_tooltip", None)
@@ -2627,7 +2799,8 @@ class DownloaderApp:
         if detail is not None:
             state_color = (
                 "#d75a69"
-                if any(term in detail.lower() for term in ("ошибка", "error", "не удалось"))
+                if row.get("full_error")
+                or any(term in detail.lower() for term in ("ошибка", "error", "не удалось"))
                 else "#67758e"
             )
             if "приостанов" in detail.lower():
@@ -2643,10 +2816,48 @@ class DownloaderApp:
             row["cancel"].pack_forget()
             row["progress"].pack_forget()
             row["percent"].pack_forget()
-            if "Готово" in row["detail"].cget("text"):
+            if row.get("full_error"):
+                row["failure"].pack_forget()
+                row["success"].pack_forget()
+                row["error_details"].pack(side="left", padx=4)
+                row["retry"].pack(side="left", padx=4)
+            elif "Готово" in row["detail"].cget("text"):
+                row["failure"].pack_forget()
                 row["success"].pack(side="right", padx=4)
             else:
+                row["success"].pack_forget()
                 row["failure"].pack(side="right", padx=4)
+
+    def show_download_error(self, url):
+        row = self.download_rows.get(url)
+        if not row or not row.get("full_error"):
+            return
+        self.show_window()
+        messagebox.showerror(
+            "Не удалось скачать",
+            row["full_error"],
+            parent=self.root,
+        )
+
+    def retry_download(self, url):
+        row = self.download_rows.get(url)
+        if not row or not row.get("full_error"):
+            return
+        row["full_error"] = ""
+        row["retry"].pack_forget()
+        row["error_details"].pack_forget()
+        row["failure"].pack_forget()
+        row["success"].pack_forget()
+        row["pause"].pack(side="left", padx=4)
+        row["cancel"].pack(side="left", padx=4)
+        row["percent"].configure(text="")
+        row["percent"].pack(side="right", padx=(10, 4))
+        row["progress"].set(0)
+        row["progress"].pack(side="left", fill="x", expand=True, padx=(22, 6), pady=4)
+        row["detail"].configure(text="В очереди", fg="#67758e")
+        self.jobs.put(url)
+        row["pause"].focus_set()
+        self.status_detail.set("Повторная попытка добавлена в очередь")
 
     def render_history(self):
         for child in self.history_body.winfo_children():
@@ -3123,11 +3334,11 @@ class DownloaderApp:
 
         if percent is not None:
             self.overlay_percent = max(0.0, min(100.0, float(percent)))
-        elif created:
-            self.overlay_percent = 0.0
+        else:
+            self.overlay_percent = None
+        self.overlay_title = str(title or "Идёт скачивание")
+        self.overlay_detail = str(detail or "")
         self.overlay_done = done
-        # Completion is handled by closing the compact progress window. Do not
-        # turn it into a second cloud/message notification.
         if not done:
             self.cancel_overlay_timer("overlay_hide_after_id")
         if done:
@@ -3163,7 +3374,7 @@ class DownloaderApp:
                 frame = self.remove_legacy_magenta(animation.convert("RGBA"))
                 frame = (
                     frame.convert("RGBa")
-                    .resize((180, 180), Image.Resampling.LANCZOS)
+                    .resize((160, 160), Image.Resampling.LANCZOS)
                     .convert("RGBA")
                 )
                 frame.load()
@@ -3364,7 +3575,65 @@ class DownloaderApp:
         self.cancel_overlay_timer("overlay_redraw_after_id")
         self.overlay_last_draw_at = now
         canvas = Image.new("RGBA", (260, 300), (0, 0, 0, 0))
-        center_x, center_y = 130, 210
+        draw = ImageDraw.Draw(canvas)
+        title_lower = self.overlay_title.lower()
+        is_error = any(term in title_lower for term in ("ошибка", "не удалось"))
+        is_cancelled = "отмен" in title_lower
+        accent = "#d84f60" if is_error else "#b07922" if is_cancelled else "#2581f6"
+
+        # A compact status card keeps progress legible even when the main
+        # window is hidden in the system tray.
+        draw.rounded_rectangle(
+            (8, 8, 252, 137),
+            radius=18,
+            fill=(255, 255, 255, 244),
+            outline=(218, 230, 247, 255),
+            width=1,
+        )
+        title = self.overlay_title
+        if self.overlay_done and not (is_error or is_cancelled):
+            title = "Загрузка завершена"
+        title_font = self.overlay_font(13, bold=True)
+        body_font = self.overlay_font(10)
+        hint_font = self.overlay_font(9)
+        draw.text((20, 18), title, fill=accent, font=title_font)
+
+        detail = self.overlay_detail.strip()
+        if detail.lower().startswith(("http://", "https://")):
+            detail = "Подготовка ссылки…"
+        if self.overlay_done and not (is_error or is_cancelled):
+            detail = "Файл сохранён в выбранную папку"
+        detail_lines = self.wrap_overlay_text(detail or "Подготовка загрузки…", body_font, 218, 2, draw)
+        for index, line in enumerate(detail_lines):
+            draw.text((20, 41 + index * 13), line, fill="#46556f", font=body_font)
+
+        if is_error:
+            percent_text = "Ошибка"
+            fraction = 0.0
+        elif is_cancelled:
+            percent_text = "Отменено"
+            fraction = 0.0
+        elif self.overlay_percent is None:
+            percent_text = "Подготовка"
+            fraction = 0.06 if self.is_downloading else 0.0
+        else:
+            fraction = max(0.0, min(1.0, float(self.overlay_percent) / 100.0))
+            percent_text = f"{float(self.overlay_percent):.0f}%"
+        if self.overlay_done and not (is_error or is_cancelled):
+            fraction = 1.0
+            percent_text = "100%"
+        draw.text((20, 95), percent_text, fill="#34445f", font=body_font)
+        draw.rounded_rectangle((20, 115, 240, 122), radius=4, fill=(230, 238, 249, 255))
+        if fraction > 0:
+            fill_right = 20 + max(7, round(220 * fraction))
+            draw.rounded_rectangle(
+                (20, 115, min(240, fill_right), 122),
+                radius=4,
+                fill=accent if (is_error or is_cancelled) else "#2581f6",
+            )
+        draw.text((20, 126), "Нажми, чтобы открыть Ploopy", fill="#65748e", font=hint_font)
+
+        center_x, center_y = 130, 220
         if self.overlay_animation_frames:
             frame = self.overlay_animation_frames[self.overlay_frame_index][0]
             canvas.alpha_composite(frame, (center_x - frame.width // 2, center_y - frame.height // 2))
@@ -3375,24 +3644,68 @@ class DownloaderApp:
                     fallback = (
                         Image.open(APP_DIR / "Ploopy.png")
                         .convert("RGBA")
-                        .resize((180, 180), Image.Resampling.LANCZOS)
+                        .resize((160, 160), Image.Resampling.LANCZOS)
                     )
                     self.overlay_fallback_image = fallback
                 except (OSError, tk.TclError):
                     fallback = False
                     self.overlay_fallback_image = fallback
             if fallback:
-                canvas.alpha_composite(fallback, (center_x - 90, center_y - 90))
+                canvas.alpha_composite(fallback, (center_x - 80, center_y - 80))
             else:
                 ImageDraw.Draw(canvas).text((center_x, center_y), "↓", fill="#2786ed", anchor="mm")
 
-        # Progress border intentionally disabled: the compact tray animation
-        # remains, without the non-moving green perimeter.
+        progress_border = self.draw_square_progress_border()
+        if progress_border is not None:
+            canvas.alpha_composite(progress_border)
 
         if not self.update_layered_overlay(canvas):
             if not self.overlay_alpha_failed:
                 self.overlay.configure(bg="#f3f7fc")
                 self.overlay_alpha_failed = True
+
+    def overlay_font(self, size, bold=False):
+        key = (int(size), bool(bold))
+        cached = self.overlay_fonts.get(key)
+        if cached is not None:
+            return cached
+        filename = "Manrope-SemiBold.ttf" if bold else "Manrope-Regular.ttf"
+        font_path = FONT_DIR / filename
+        try:
+            font = ImageFont.truetype(str(font_path), key[0])
+        except OSError:
+            font = ImageFont.load_default()
+        self.overlay_fonts[key] = font
+        return font
+
+    @staticmethod
+    def wrap_overlay_text(text, font, max_width, max_lines, draw):
+        words = str(text).split()
+        lines = []
+        current = ""
+        while words:
+            word = words.pop(0)
+            candidate = f"{current} {word}".strip()
+            if not current or draw.textlength(candidate, font=font) <= max_width:
+                current = candidate
+                continue
+            lines.append(current)
+            current = word
+            if len(lines) == max_lines:
+                break
+        if len(lines) < max_lines and current:
+            lines.append(current)
+        for index, line in enumerate(lines):
+            if draw.textlength(line, font=font) > max_width:
+                while line and draw.textlength(line + "…", font=font) > max_width:
+                    line = line[:-1]
+                lines[index] = line.rstrip() + "…"
+        if words and lines:
+            last = lines[-1]
+            while last and draw.textlength(last + "…", font=font) > max_width:
+                last = last[:-1]
+            lines[-1] = last.rstrip() + "…"
+        return lines[:max_lines]
 
     def draw_overlay_deferred(self):
         self.overlay_redraw_after_id = None
@@ -3411,14 +3724,23 @@ class DownloaderApp:
             ImageDraw.Draw(self.overlay_border_base).rounded_rectangle(
                 box, radius=radius, outline="#edf2f7", width=stroke
             )
-        completed = self.overlay_percent is not None and self.overlay_percent >= 100
+        title_lower = self.overlay_title.lower()
+        is_error = any(term in title_lower for term in ("ошибка", "не удалось"))
+        is_cancelled = "отмен" in title_lower
+        completed = (
+            self.overlay_percent is not None
+            and self.overlay_percent >= 100
+            and not (is_error or is_cancelled)
+        )
         progress = max(0.0, min(100.0, float(self.overlay_percent or 0)))
         # Keep a visible green starting mark while yt-dlp is resolving a URL
         # and has not emitted its first numeric percentage yet.
         if self.is_downloading and not self.overlay_done and progress == 0:
             progress = 1.5
         cache_key = (
-            ("complete",) if completed else ("progress", round(progress, 1), self.overlay_done)
+            ("complete",)
+            if completed
+            else ("progress", round(progress, 1), self.overlay_done, is_error, is_cancelled)
         )
         if cache_key == self.overlay_border_cache_key and self.overlay_border_cache is not None:
             return self.overlay_border_cache
@@ -3427,6 +3749,13 @@ class DownloaderApp:
 
         if completed:
             draw.rounded_rectangle(box, radius=radius, outline="#45c982", width=stroke)
+        elif self.overlay_done:
+            draw.rounded_rectangle(
+                box,
+                radius=radius,
+                outline="#e45e69" if is_error else "#d49a3b",
+                width=stroke,
+            )
         else:
             progress_fraction = progress / 100
             if progress_fraction > 0:
@@ -4051,7 +4380,12 @@ class DownloaderApp:
                 self.progress_title.set("Загрузка завершена")
                 self.progress_percent.set("100%")
                 self.status_detail.set("Файл сохранён в выбранную папку")
-                self.hide_overlay()
+                self.show_download_overlay(
+                    "Готово",
+                    "Файл сохранён в выбранную папку",
+                    100,
+                    done=True,
+                )
                 if self.settings.get("sound", True):
                     winsound.MessageBeep(winsound.MB_ICONASTERISK)
                 self.current_url = None
@@ -4069,7 +4403,13 @@ class DownloaderApp:
                 url, error = value
                 self.is_downloading = False
                 self.mark_queue(url, "Ошибка")
-                self.update_download_row(url, detail=error[:100], finished=True)
+                row = self.download_rows.get(url)
+                if row:
+                    row["full_error"] = error
+                brief_error = " ".join(str(error).split())
+                if len(brief_error) > 100:
+                    brief_error = brief_error[:97].rstrip() + "…"
+                self.update_download_row(url, detail=brief_error, finished=True)
                 self.progress_title.set("Не удалось скачать")
                 self.progress_percent.set("!")
                 self.status_detail.set(error)
