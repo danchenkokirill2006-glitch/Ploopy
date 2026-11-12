@@ -10,10 +10,12 @@ $releaseDir = Join-Path $project 'release'
 $releaseVersion = if ($env:PLOOPY_VERSION) { $env:PLOOPY_VERSION.TrimStart('v', 'V') } else { '1.0.0' }
 New-Item -ItemType Directory -Force -Path $temporary, $stage, $appOut, $releaseDir | Out-Null
 
-py -3.10 -m venv $venv
-if ($LASTEXITCODE -ne 0) { throw 'Не удалось создать среду сборки Python 3.10.' }
+$buildPythonVersion = & python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+if ($LASTEXITCODE -ne 0 -or $buildPythonVersion -ne '3.12') { throw 'Для сборки нужен Python 3.12, доступный через PATH.' }
+python -m venv $venv
+if ($LASTEXITCODE -ne 0) { throw 'Не удалось создать среду сборки Python 3.12.' }
 $python = Join-Path $venv 'Scripts\python.exe'
-& $python -m pip install --upgrade pip pyinstaller yt-dlp pystray pillow
+& $python -m pip install --upgrade pip pyinstaller 'yt-dlp[default]' pystray pillow
 if ($LASTEXITCODE -ne 0) { throw 'Не удалось установить компоненты сборки.' }
 
 & $python -m PyInstaller --noconfirm --clean --onedir --windowed --name Ploopy `
@@ -25,8 +27,84 @@ if ($LASTEXITCODE -ne 0) { throw 'Не удалось собрать прило�
 
 & $python -m PyInstaller --noconfirm --clean --onefile --console --name yt-dlp `
     --distpath $appOut --workpath (Join-Path $buildOut 'ytdlp') --specpath $temporary `
+    --collect-all yt_dlp_ejs `
     (Join-Path $PSScriptRoot 'yt_dlp_launcher.py')
 if ($LASTEXITCODE -ne 0) { throw 'Не удалось собрать модуль скачивания.' }
+
+$denoRelease = Invoke-RestMethod -Uri 'https://api.github.com/repos/denoland/deno/releases/latest'
+$denoVersion = $denoRelease.tag_name.TrimStart('v')
+$denoAssetName = 'deno-x86_64-pc-windows-msvc.zip'
+$denoAsset = $denoRelease.assets | Where-Object { $_.name -eq $denoAssetName } | Select-Object -First 1
+$denoChecksumAsset = $denoRelease.assets | Where-Object { $_.name -eq "$denoAssetName.sha256sum" } | Select-Object -First 1
+if (-not $denoAsset -or -not $denoChecksumAsset) { throw 'В последнем выпуске Deno не найдены архив Windows и его контрольная сумма.' }
+$denoArchive = Join-Path $temporary "deno-$denoVersion.zip"
+$denoExtract = Join-Path $temporary 'deno-extracted'
+$denoUrl = $denoAsset.browser_download_url
+Invoke-WebRequest -Uri $denoUrl -OutFile $denoArchive
+$denoChecksumFile = Join-Path $temporary 'deno.sha256sum'
+Invoke-WebRequest -Uri $denoChecksumAsset.browser_download_url -OutFile $denoChecksumFile
+$denoExpectedHash = ((Get-Content -Raw -LiteralPath $denoChecksumFile).Trim() -split '\s+')[0].ToLowerInvariant()
+$denoActualHash = (Get-FileHash -LiteralPath $denoArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($denoActualHash -ne $denoExpectedHash) { throw 'Контрольная сумма Deno не совпала.' }
+Expand-Archive -LiteralPath $denoArchive -DestinationPath $denoExtract -Force
+$denoExecutable = Join-Path $denoExtract 'deno.exe'
+if (-not (Test-Path -LiteralPath $denoExecutable -PathType Leaf)) { throw 'В архиве Deno не найден deno.exe.' }
+Copy-Item -LiteralPath $denoExecutable -Destination (Join-Path $appOut 'deno.exe')
+
+$ffmpegArchive = Join-Path $temporary 'ffmpeg-lgpl.zip'
+$ffmpegExtract = Join-Path $temporary 'ffmpeg-extracted'
+$ffmpegUrl = 'https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip'
+Invoke-WebRequest -Uri $ffmpegUrl -OutFile $ffmpegArchive
+$ffmpegChecksumFile = Join-Path $temporary 'ffmpeg-checksums.sha256'
+Invoke-WebRequest -Uri 'https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/latest/checksums.sha256' -OutFile $ffmpegChecksumFile
+$ffmpegAssetName = [IO.Path]::GetFileName($ffmpegUrl)
+$ffmpegChecksumLine = Get-Content -LiteralPath $ffmpegChecksumFile | Where-Object { $_ -match [regex]::Escape($ffmpegAssetName) } | Select-Object -First 1
+if (-not $ffmpegChecksumLine) { throw 'В списке контрольных сумм нет архива FFmpeg.' }
+$ffmpegExpectedHash = ($ffmpegChecksumLine -split '\s+')[0].ToLowerInvariant()
+$ffmpegActualHash = (Get-FileHash -LiteralPath $ffmpegArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($ffmpegActualHash -ne $ffmpegExpectedHash) { throw 'Контрольная сумма FFmpeg не совпала.' }
+Expand-Archive -LiteralPath $ffmpegArchive -DestinationPath $ffmpegExtract -Force
+$ffmpegExecutable = Get-ChildItem -LiteralPath $ffmpegExtract -Filter 'ffmpeg.exe' -File -Recurse | Select-Object -First 1
+if (-not $ffmpegExecutable) { throw 'В архиве FFmpeg не найден ffmpeg.exe.' }
+$ffmpegOut = Join-Path $appOut 'ffmpeg'
+New-Item -ItemType Directory -Force -Path $ffmpegOut | Out-Null
+Copy-Item -Path (Join-Path $ffmpegExecutable.Directory.FullName '*') -Destination $ffmpegOut -Recurse -Force
+$ffmpegRoot = $ffmpegExecutable.Directory.Parent.FullName
+Get-ChildItem -LiteralPath $ffmpegRoot -File | Where-Object { $_.Name -match '^(LICENSE|COPYING|NOTICE)' } | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $appOut -Force
+}
+$ffmpegLicense = Join-Path $appOut 'COPYING.LGPLv2.1'
+Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0/COPYING.LGPLv2.1' -OutFile $ffmpegLicense
+$denoLicense = Join-Path $appOut 'LICENSE-Deno.txt'
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/denoland/deno/v$denoVersion/LICENSE.md" -OutFile $denoLicense
+$sitePackages = Join-Path $venv 'Lib\site-packages'
+$ejsDistInfo = Get-ChildItem -LiteralPath $sitePackages -Directory -Filter 'yt_dlp_ejs-*.dist-info' | Select-Object -First 1
+if (-not $ejsDistInfo) { throw 'Не установлены скрипты yt-dlp-ejs.' }
+$ejsLicensePath = Join-Path $ejsDistInfo.FullName 'licenses\LICENSE'
+if (-not (Test-Path -LiteralPath $ejsLicensePath -PathType Leaf)) { throw 'Не найден текст лицензии yt-dlp-ejs.' }
+Copy-Item -LiteralPath $ejsLicensePath -Destination (Join-Path $appOut 'LICENSE-yt-dlp-ejs.txt')
+$ejsLibraryPath = Join-Path $sitePackages 'yt_dlp_ejs\yt\solver\lib.min.js'
+$ejsLibrary = [System.IO.File]::ReadAllText($ejsLibraryPath)
+$ejsLicenseBlock = [regex]::Match($ejsLibrary, '(?s)^/\*!.*?\*/')
+if (-not $ejsLicenseBlock.Success) { throw 'Не найдены лицензии компонентов JavaScript-загрузчика.' }
+[System.IO.File]::WriteAllText((Join-Path $appOut 'LICENSE-yt-dlp-ejs-dependencies.txt'), $ejsLicenseBlock.Value, [System.Text.UTF8Encoding]::new($false))
+$thirdPartyNotices = @"
+Сторонние компоненты в Ploopy
+
+Deno $denoVersion — лицензия MIT; полный текст: LICENSE-Deno.txt.
+Исходный код: https://github.com/denoland/deno/tree/v$denoVersion
+
+FFmpeg 9.0 — сборка LGPL shared, без GPL-компонентов.
+Текст лицензии: COPYING.LGPLv2.1.
+Исходный код FFmpeg: https://ffmpeg.org/releases/ffmpeg-9.0.tar.xz
+Сценарии сборки Windows: https://github.com/FFmpeg-Builds/FFmpeg-Builds
+
+yt-dlp и yt-dlp-ejs включены в yt-dlp.exe.
+Лицензия yt-dlp-ejs: LICENSE-yt-dlp-ejs.txt.
+Лицензии Meriyah (ISC) и Astring (MIT): LICENSE-yt-dlp-ejs-dependencies.txt.
+Исходный код и лицензии: https://github.com/yt-dlp/yt-dlp
+"@
+[System.IO.File]::WriteAllText((Join-Path $appOut 'THIRD-PARTY-NOTICES.txt'), $thirdPartyNotices, [System.Text.UTF8Encoding]::new($false))
 
 Copy-Item -LiteralPath (Join-Path $project 'Ploopy.png') -Destination $appOut
 Copy-Item -LiteralPath (Join-Path $project 'Ploopy.ico') -Destination $appOut
@@ -90,4 +168,4 @@ if (-not (Get-Content -Raw -LiteralPath (Join-Path $installTest2 'settings.json'
 if ((Get-Content -Raw -LiteralPath (Join-Path $installTest2 'version.txt')) -ne $releaseVersion) { throw 'После обновления установлен неверный номер версии.' }
 Write-Output "Архив создан: $zip"
 Write-Output "Размер: $([math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1)) МБ"
-Write-Output "Проверки пройдены. yt-dlp $(& $ytdlp --version)"
+Write-Output "Проверки пройдены. yt-dlp $(& $ytdlp --version); Deno $denoVersion; FFmpeg 9.0 LGPL."

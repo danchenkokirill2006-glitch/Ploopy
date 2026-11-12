@@ -9,6 +9,7 @@ import hashlib
 import math
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -3725,27 +3726,46 @@ class DownloaderApp:
         return any(host == domain or host.endswith("." + domain) for domain in known)
 
     def download_video(self, url: str, folder: Path):
-        target = folder / "%(title).180B.%(ext)s"
+        target = folder / "%(title).150B [%(extractor_key)s-%(id)s].%(ext)s"
         quality_limit = {"720p — быстрее": 720, "1080p — чётче": 1080}.get(self.quality.get())
-        if quality_limit:
-            format_spec = f"bestvideo*[height<={quality_limit}]+bestaudio/best[height<={quality_limit}]/best"
+        ffmpeg_path = APP_DIR / "ffmpeg" / "ffmpeg.exe"
+        if not ffmpeg_path.is_file():
+            system_ffmpeg = shutil.which("ffmpeg")
+            ffmpeg_path = Path(system_ffmpeg) if system_ffmpeg else None
+        if ffmpeg_path:
+            if quality_limit:
+                format_spec = f"bestvideo*[height<={quality_limit}]+bestaudio/best[height<={quality_limit}]/best"
+            else:
+                format_spec = "bestvideo*+bestaudio/best"
         else:
-            format_spec = "bestvideo*+bestaudio/best"
+            # Prefer a ready-to-play file if FFmpeg is missing, rather than
+            # selecting separate streams that cannot be joined on this PC.
+            format_spec = f"best[height<={quality_limit}]/best" if quality_limit else "best"
         args = [
             str(APP_DIR / "yt-dlp.exe") if getattr(sys, "frozen", False) else sys.executable,
             *([] if getattr(sys, "frozen", False) else ["-m", "yt_dlp"]),
             "--no-playlist",
             "--windows-filenames",
             "--concurrent-fragments",
-            "16",
+            "2",
+            "--retries",
+            "10",
+            "--fragment-retries",
+            "10",
+            "--extractor-retries",
+            "5",
+            "--file-access-retries",
+            "5",
+            "--retry-sleep",
+            "http:exp=1:16",
+            "--retry-sleep",
+            "fragment:exp=1:8",
+            "--retry-sleep",
+            "extractor:linear=1::2",
             "--newline",
             "--no-colors",
-            "--http-chunk-size",
-            "10M",
             "-f",
             format_spec,
-            "--merge-output-format",
-            "mp4",
             "--print",
             "before_dl:__PLOOPY_TITLE__%(title)s",
             "--print",
@@ -3753,6 +3773,11 @@ class DownloaderApp:
             "-o",
             str(target),
         ]
+        if ffmpeg_path:
+            args.extend(["--ffmpeg-location", str(ffmpeg_path), "--merge-output-format", "mp4"])
+        deno_path = APP_DIR / "deno.exe"
+        if deno_path.is_file():
+            args.extend(["--js-runtimes", f"deno:{deno_path}"])
         browser_setting = self.browser.get()
         if browser_setting == "Автоматически":
             browsers = ["Chrome", "Edge", "Firefox", "Brave", "Opera", "Без авторизации"]
