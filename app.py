@@ -1124,9 +1124,6 @@ class DownloaderApp:
         self.overlay_next_frame_at = 0.0
         self.overlay_percent = None
         self.overlay_done = False
-        self.overlay_title = "Идёт скачивание"
-        self.overlay_detail = ""
-        self.overlay_fonts = {}
         self.overlay_after_id = None
         self.overlay_hide_after_id = None
         self.overlay_redraw_after_id = None
@@ -3334,11 +3331,11 @@ class DownloaderApp:
 
         if percent is not None:
             self.overlay_percent = max(0.0, min(100.0, float(percent)))
-        else:
-            self.overlay_percent = None
-        self.overlay_title = str(title or "Идёт скачивание")
-        self.overlay_detail = str(detail or "")
+        elif created:
+            self.overlay_percent = 0.0
         self.overlay_done = done
+        # Completion is handled by closing the compact progress window. Do not
+        # turn it into a second cloud/message notification.
         if not done:
             self.cancel_overlay_timer("overlay_hide_after_id")
         if done:
@@ -3374,7 +3371,7 @@ class DownloaderApp:
                 frame = self.remove_legacy_magenta(animation.convert("RGBA"))
                 frame = (
                     frame.convert("RGBa")
-                    .resize((160, 160), Image.Resampling.LANCZOS)
+                    .resize((180, 180), Image.Resampling.LANCZOS)
                     .convert("RGBA")
                 )
                 frame.load()
@@ -3575,65 +3572,7 @@ class DownloaderApp:
         self.cancel_overlay_timer("overlay_redraw_after_id")
         self.overlay_last_draw_at = now
         canvas = Image.new("RGBA", (260, 300), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(canvas)
-        title_lower = self.overlay_title.lower()
-        is_error = any(term in title_lower for term in ("ошибка", "не удалось"))
-        is_cancelled = "отмен" in title_lower
-        accent = "#d84f60" if is_error else "#b07922" if is_cancelled else "#2581f6"
-
-        # A compact status card keeps progress legible even when the main
-        # window is hidden in the system tray.
-        draw.rounded_rectangle(
-            (8, 8, 252, 137),
-            radius=18,
-            fill=(255, 255, 255, 244),
-            outline=(218, 230, 247, 255),
-            width=1,
-        )
-        title = self.overlay_title
-        if self.overlay_done and not (is_error or is_cancelled):
-            title = "Загрузка завершена"
-        title_font = self.overlay_font(13, bold=True)
-        body_font = self.overlay_font(10)
-        hint_font = self.overlay_font(9)
-        draw.text((20, 18), title, fill=accent, font=title_font)
-
-        detail = self.overlay_detail.strip()
-        if detail.lower().startswith(("http://", "https://")):
-            detail = "Подготовка ссылки…"
-        if self.overlay_done and not (is_error or is_cancelled):
-            detail = "Файл сохранён в выбранную папку"
-        detail_lines = self.wrap_overlay_text(detail or "Подготовка загрузки…", body_font, 218, 2, draw)
-        for index, line in enumerate(detail_lines):
-            draw.text((20, 41 + index * 13), line, fill="#46556f", font=body_font)
-
-        if is_error:
-            percent_text = "Ошибка"
-            fraction = 0.0
-        elif is_cancelled:
-            percent_text = "Отменено"
-            fraction = 0.0
-        elif self.overlay_percent is None:
-            percent_text = "Подготовка"
-            fraction = 0.06 if self.is_downloading else 0.0
-        else:
-            fraction = max(0.0, min(1.0, float(self.overlay_percent) / 100.0))
-            percent_text = f"{float(self.overlay_percent):.0f}%"
-        if self.overlay_done and not (is_error or is_cancelled):
-            fraction = 1.0
-            percent_text = "100%"
-        draw.text((20, 95), percent_text, fill="#34445f", font=body_font)
-        draw.rounded_rectangle((20, 115, 240, 122), radius=4, fill=(230, 238, 249, 255))
-        if fraction > 0:
-            fill_right = 20 + max(7, round(220 * fraction))
-            draw.rounded_rectangle(
-                (20, 115, min(240, fill_right), 122),
-                radius=4,
-                fill=accent if (is_error or is_cancelled) else "#2581f6",
-            )
-        draw.text((20, 126), "Нажми, чтобы открыть Ploopy", fill="#65748e", font=hint_font)
-
-        center_x, center_y = 130, 220
+        center_x, center_y = 130, 210
         if self.overlay_animation_frames:
             frame = self.overlay_animation_frames[self.overlay_frame_index][0]
             canvas.alpha_composite(frame, (center_x - frame.width // 2, center_y - frame.height // 2))
@@ -3644,68 +3583,24 @@ class DownloaderApp:
                     fallback = (
                         Image.open(APP_DIR / "Ploopy.png")
                         .convert("RGBA")
-                        .resize((160, 160), Image.Resampling.LANCZOS)
+                        .resize((180, 180), Image.Resampling.LANCZOS)
                     )
                     self.overlay_fallback_image = fallback
                 except (OSError, tk.TclError):
                     fallback = False
                     self.overlay_fallback_image = fallback
             if fallback:
-                canvas.alpha_composite(fallback, (center_x - 80, center_y - 80))
+                canvas.alpha_composite(fallback, (center_x - 90, center_y - 90))
             else:
                 ImageDraw.Draw(canvas).text((center_x, center_y), "↓", fill="#2786ed", anchor="mm")
 
-        progress_border = self.draw_square_progress_border()
-        if progress_border is not None:
-            canvas.alpha_composite(progress_border)
+        # Progress border intentionally disabled: the compact tray animation
+        # remains, without the non-moving green perimeter.
 
         if not self.update_layered_overlay(canvas):
             if not self.overlay_alpha_failed:
                 self.overlay.configure(bg="#f3f7fc")
                 self.overlay_alpha_failed = True
-
-    def overlay_font(self, size, bold=False):
-        key = (int(size), bool(bold))
-        cached = self.overlay_fonts.get(key)
-        if cached is not None:
-            return cached
-        filename = "Manrope-SemiBold.ttf" if bold else "Manrope-Regular.ttf"
-        font_path = FONT_DIR / filename
-        try:
-            font = ImageFont.truetype(str(font_path), key[0])
-        except OSError:
-            font = ImageFont.load_default()
-        self.overlay_fonts[key] = font
-        return font
-
-    @staticmethod
-    def wrap_overlay_text(text, font, max_width, max_lines, draw):
-        words = str(text).split()
-        lines = []
-        current = ""
-        while words:
-            word = words.pop(0)
-            candidate = f"{current} {word}".strip()
-            if not current or draw.textlength(candidate, font=font) <= max_width:
-                current = candidate
-                continue
-            lines.append(current)
-            current = word
-            if len(lines) == max_lines:
-                break
-        if len(lines) < max_lines and current:
-            lines.append(current)
-        for index, line in enumerate(lines):
-            if draw.textlength(line, font=font) > max_width:
-                while line and draw.textlength(line + "…", font=font) > max_width:
-                    line = line[:-1]
-                lines[index] = line.rstrip() + "…"
-        if words and lines:
-            last = lines[-1]
-            while last and draw.textlength(last + "…", font=font) > max_width:
-                last = last[:-1]
-            lines[-1] = last.rstrip() + "…"
-        return lines[:max_lines]
 
     def draw_overlay_deferred(self):
         self.overlay_redraw_after_id = None
@@ -3724,23 +3619,14 @@ class DownloaderApp:
             ImageDraw.Draw(self.overlay_border_base).rounded_rectangle(
                 box, radius=radius, outline="#edf2f7", width=stroke
             )
-        title_lower = self.overlay_title.lower()
-        is_error = any(term in title_lower for term in ("ошибка", "не удалось"))
-        is_cancelled = "отмен" in title_lower
-        completed = (
-            self.overlay_percent is not None
-            and self.overlay_percent >= 100
-            and not (is_error or is_cancelled)
-        )
+        completed = self.overlay_percent is not None and self.overlay_percent >= 100
         progress = max(0.0, min(100.0, float(self.overlay_percent or 0)))
         # Keep a visible green starting mark while yt-dlp is resolving a URL
         # and has not emitted its first numeric percentage yet.
         if self.is_downloading and not self.overlay_done and progress == 0:
             progress = 1.5
         cache_key = (
-            ("complete",)
-            if completed
-            else ("progress", round(progress, 1), self.overlay_done, is_error, is_cancelled)
+            ("complete",) if completed else ("progress", round(progress, 1), self.overlay_done)
         )
         if cache_key == self.overlay_border_cache_key and self.overlay_border_cache is not None:
             return self.overlay_border_cache
@@ -3749,13 +3635,6 @@ class DownloaderApp:
 
         if completed:
             draw.rounded_rectangle(box, radius=radius, outline="#45c982", width=stroke)
-        elif self.overlay_done:
-            draw.rounded_rectangle(
-                box,
-                radius=radius,
-                outline="#e45e69" if is_error else "#d49a3b",
-                width=stroke,
-            )
         else:
             progress_fraction = progress / 100
             if progress_fraction > 0:
@@ -4380,12 +4259,7 @@ class DownloaderApp:
                 self.progress_title.set("Загрузка завершена")
                 self.progress_percent.set("100%")
                 self.status_detail.set("Файл сохранён в выбранную папку")
-                self.show_download_overlay(
-                    "Готово",
-                    "Файл сохранён в выбранную папку",
-                    100,
-                    done=True,
-                )
+                self.hide_overlay()
                 if self.settings.get("sound", True):
                     winsound.MessageBeep(winsound.MB_ICONASTERISK)
                 self.current_url = None
