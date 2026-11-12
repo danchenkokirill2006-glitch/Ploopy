@@ -43,7 +43,10 @@ $denoUrl = $denoAsset.browser_download_url
 Invoke-WebRequest -Uri $denoUrl -OutFile $denoArchive
 $denoChecksumFile = Join-Path $temporary 'deno.sha256sum'
 Invoke-WebRequest -Uri $denoChecksumAsset.browser_download_url -OutFile $denoChecksumFile
-$denoExpectedHash = ((Get-Content -Raw -LiteralPath $denoChecksumFile).Trim() -split '\s+')[0].ToLowerInvariant()
+$denoChecksumText = Get-Content -Raw -LiteralPath $denoChecksumFile
+$denoHashMatch = [regex]::Match($denoChecksumText, '(?im)^Hash\s*:\s*([a-f0-9]{64})')
+if (-not $denoHashMatch.Success) { throw 'Не удалось прочитать контрольную сумму Deno.' }
+$denoExpectedHash = $denoHashMatch.Groups[1].Value.ToLowerInvariant()
 $denoActualHash = (Get-FileHash -LiteralPath $denoArchive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($denoActualHash -ne $denoExpectedHash) { throw 'Контрольная сумма Deno не совпала.' }
 Expand-Archive -LiteralPath $denoArchive -DestinationPath $denoExtract -Force
